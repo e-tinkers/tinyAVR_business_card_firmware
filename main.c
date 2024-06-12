@@ -218,7 +218,8 @@ void configTCA() {
     TCA0.SINGLE.CTRLB = TCA_SINGLE_WGMODE_NORMAL_gc;
     TCA0.SINGLE.PER = 625 - 1;                          // (1ms * F_CPU ) / 8 -1 (i.e. (0.001 * 5000000 / 8) - 1 )
     TCA0.SINGLE.INTCTRL = TCA_SINGLE_OVF_bm;
-    TCA0.SINGLE.CTRLA = TCA_SINGLE_CLKSEL_DIV8_gc | TCA_SINGLE_ENABLE_bm;
+    TCA0.SINGLE.CTRLA = TCA_SINGLE_CLKSEL_DIV8_gc;
+    TCA0.SINGLE.CTRLA |= TCA_SINGLE_ENABLE_bm;
 }
 
 void configRTC() {
@@ -285,8 +286,8 @@ int main() {
           uint16_t seconds = timeCount;
           sei();
 
-          uint8_t hours = (seconds / 3600) % 12;
-          uint8_t minutes = (seconds / 60) % 60;
+          uint8_t hours = (uint8_t) ((seconds / 3600) % 12);
+          uint8_t minutes = (uint8_t) ((seconds / 60) % 60);
           uint8_t fiveMinuteInterval = (minutes / 5) % 12;
           uint8_t flashes = minutes % 5;
 
