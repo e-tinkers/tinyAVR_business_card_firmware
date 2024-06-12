@@ -20,7 +20,7 @@
 #define LEDS                12
 
 const uint16_t TWELVE_HOUR = 43200;    // 12 * 3600 seconds
-const uint16_t SLEEP_INTERVAL = 60;    // 60 seconds
+const uint16_t SHOWTIME_INTERVAL = 60;    // 60 seconds
 const uint32_t DISPLAY_TIME = 5000;  // 5000ms
 
 // Charlieplexing configuration and state matrix
@@ -62,9 +62,9 @@ uint32_t millis() {
 }
 
 ISR (RTC_PIT_vect) {
-  timeCount = (timeCount + 1) % TWELVE_HOUR; // count up to 12-hour (12 * 3600) = 43200
+  timeCount = (timeCount + 1) % TWELVE_HOUR;    // count up to 12-hour (12 * 3600) = 43200
 #ifdef AUTO_SHOWTIME
-  if ((timeCount % SLEEP_INTERVAL) == 0) {              // only show time once in every 60 seconds
+  if ((timeCount % SHOWTIME_INTERVAL) == 0) {   // only show time once in every 60 seconds
     showTime = 1;
     displayStart = millis();
   }
@@ -82,14 +82,13 @@ ISR(PORTC_PORT_vect) {
     PORTC.PIN5CTRL = 0;                // disable trigger
     PORTC.INTFLAGS = PORT_INT5_bm;     // Clear PC5 interrupt flag
     sw1Pressed = 1;
-    displayStart = millis();
   }
   if (PORTC.INTFLAGS & PORT_INT4_bm) { // PC4 (SW2) for show time
     PORTC.PIN4CTRL = 0;                // disable trigger
     PORTC.INTFLAGS = PORT_INT4_bm;     // Clear PC4 interrupt flag
     sw2Pressed = 1;
-    displayStart = millis();
   }
+  displayStart = millis();
 }
 
 void disableAllPins() {
@@ -235,16 +234,16 @@ void configRTC() {
   RTC.CLKSEL = RTC_CLKSEL_TOSC32K_gc;                   // clock from  XOSC32K (PB2 & PB3) or TSOC1 pin (PB3)
 #endif
 
-  RTC.PITCTRLA = RTC_PERIOD_CYC32768_gc | RTC_PITEN_bm; // RTC clock cycles between each interrupt
   RTC.PITINTCTRL = RTC_PI_bm;
+  RTC.PITCTRLA = RTC_PERIOD_CYC32768_gc | RTC_PITEN_bm; // RTC clock cycles between each interrupt
 
 }
 
 void configButtons() {
     PORTC.DIRCLR = PIN4_bm;
-    PORTC.PIN4CTRL = PORT_PULLUPEN_bm | PORT_ISC_LEVEL_gc;  // Enable PC4(SW2) PULLUP and interrupt trigger on LOW
+    PORTC.PIN4CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;  // Enable PC4(SW2) PULLUP and interrupt trigger
     PORTC.DIRCLR = PIN5_bm;
-    PORTC.PIN5CTRL = PORT_PULLUPEN_bm | PORT_ISC_LEVEL_gc;  // Enable PC5(SW1) PULLUP and interrupt trigger on LOW
+    PORTC.PIN5CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;  // Enable PC5(SW1) PULLUP and interrupt trigger
 }
 
 
@@ -298,11 +297,11 @@ int main() {
               turnOffLED();
               if (sw1Pressed) {
                 sw1Pressed = 0;
-                PORTC.PIN5CTRL = PORT_PULLUPEN_bm | PORT_ISC_LEVEL_gc;
+                PORTC.PIN5CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
               }
               if (sw2Pressed) {
                 sw2Pressed = 0;
-                PORTC.PIN4CTRL = PORT_PULLUPEN_bm | PORT_ISC_LEVEL_gc;
+                PORTC.PIN4CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
               }
               showTime = 0;
               displayStart = millis();
