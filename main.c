@@ -267,6 +267,7 @@ void testLED() {
 int main() {
 
     _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, (CLKCTRL_PEN_bm | CLKCTRL_PDIV_4X_gc)); // set prescaler to 4 for running at 5MHz
+    while (!(CLKCTRL.MCLKSTATUS & CLKCTRL_OSC20MS_bm)) {};
     // _PROTECTED_WRITE(CLKCTRL.MCLKCTRLA, CLKCTRL_CLKOUT_bm);  // output clock on CLKOUT(PB5) for testing
 
     configTime();
