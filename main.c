@@ -79,12 +79,10 @@ ISR(TCA0_OVF_vect) {
 
 ISR(PORTC_PORT_vect) {
  if (PORTC.INTFLAGS & PORT_INT5_bm) {  // PC5 (SW1) for show time
-    PORTC.PIN5CTRL = 0;                // disable trigger
     PORTC.INTFLAGS = PORT_INT5_bm;     // Clear PC5 interrupt flag
     sw1Pressed = 1;
   }
   if (PORTC.INTFLAGS & PORT_INT4_bm) { // PC4 (SW2) for show time
-    PORTC.PIN4CTRL = 0;                // disable trigger
     PORTC.INTFLAGS = PORT_INT4_bm;     // Clear PC4 interrupt flag
     sw2Pressed = 1;
   }
@@ -281,10 +279,14 @@ int main() {
           if (millis() - displayStart >= DISPLAY_TIME) {
               turnOffLED();
               if (sw1Pressed) {
+                _delay_ms(50);   // for debouncing
                 sw1Pressed = 0;
+                PORTC.PIN5CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
               }
               if (sw2Pressed) {
+                _delay_ms(50);   // for debouncing
                 sw2Pressed = 0;
+                PORTC.PIN4CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
               }
               showTime = 0;
               displayStart = millis();
