@@ -99,30 +99,15 @@ void disableAllPins() {
   PORTC.DIRCLR = PIN0_bm | PIN1_bm | PIN2_bm | PIN3_bm | PIN4_bm | PIN5_bm;
 
   // disable input buffer to lower power consumption in sleep mode
-  PORTA.PIN0CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTA.PIN1CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTA.PIN2CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTA.PIN3CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTA.PIN4CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTA.PIN5CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTA.PIN6CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTA.PIN7CTRL = PORT_ISC_INPUT_DISABLE_gc;
+  for (uint8_t i = 0; i < 8; i++) {
+    *((uint8_t *)&PORTA + 0x10 + i) = PORT_ISC_INPUT_DISABLE_gc;  // disable all pins on PORTA
+    *((uint8_t *)&PORTB + 0x10 + i) = PORT_ISC_INPUT_DISABLE_gc;  // disable all pins on PORTB
+  }
 
-  PORTB.PIN0CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTB.PIN1CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTB.PIN2CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTB.PIN3CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTB.PIN4CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTB.PIN5CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTB.PIN6CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTB.PIN7CTRL = PORT_ISC_INPUT_DISABLE_gc;
+  for (uint8_t i = 0; i < 4; i++) {
+    *((uint8_t *)&PORTC + 0x10 + i) = PORT_ISC_INPUT_DISABLE_gc;  // disable all except Pin4(SW2) and Pin5(SW1)
+  }
 
-  PORTC.PIN0CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTC.PIN1CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTC.PIN2CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  PORTC.PIN3CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  // PORTC.PIN4CTRL = PORT_ISC_INPUT_DISABLE_gc;
-  // PORTC.PIN5CTRL = PORT_ISC_INPUT_DISABLE_gc;
 }
 
 void turnOnLED(uint8_t led) {
@@ -268,7 +253,6 @@ int main() {
 
     _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, (CLKCTRL_PEN_bm | CLKCTRL_PDIV_4X_gc)); // set prescaler to 4 for running at 5MHz
     while (!(CLKCTRL.MCLKSTATUS & CLKCTRL_OSC20MS_bm)) {};
-    // _PROTECTED_WRITE(CLKCTRL.MCLKCTRLA, CLKCTRL_CLKOUT_bm);  // output clock on CLKOUT(PB5) for testing
 
     configTime();
     configRTC();
@@ -298,11 +282,9 @@ int main() {
               turnOffLED();
               if (sw1Pressed) {
                 sw1Pressed = 0;
-                PORTC.PIN5CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
               }
               if (sw2Pressed) {
                 sw2Pressed = 0;
-                PORTC.PIN4CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
               }
               showTime = 0;
               displayStart = millis();
