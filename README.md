@@ -17,3 +17,18 @@ This is the fireware used in my entry for Hackaday 2024 Business Card Challenge 
 
 Further description can be found at https://hackaday.io/project/196294-business-card-clock-attiny3227-dev-board.
 
+ ### v1.0:
+
+ 27 May, 2024 - Original Code for the Challenge entry
+ 
+ ### v1.1:
+ 
+ 31 Jan, 2026 - Add code to use sw2 to enter time adjust mode
+ 
+ Press sw2 would enter the time adjust mode, 
+ - first pressed it shows current hour, 
+ - second pressed shows current minute
+ - third pressed exits the time adjust mode
+ 
+ Press sw1 within the time adjust mode would advance the hour or minute to the next value
+
