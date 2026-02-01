@@ -5,6 +5,16 @@
  * 
  * Notes:
  *   When running at 3v 5MHz, the battery consumption: 2.5mA when LED is on, 1uA during powerDown mode.
+ * 
+ * v1.0:
+ *   27 May, 2024 - Original Code for the Challenge entry
+ * v1.1:
+ *   31 Jan, 2026 - Add code to use sw2 to enter time adjust mode
+ *                  Press sw2 would enter the time adjust mode, 
+ *                   - first pressed it shows current hour, 
+ *                   - second pressed shows current minute
+ *                   - third pressed exits the time adjust mode
+ *                  Press sw1 within the time adjust mode would advance the hour or minute to the next value
 */
 
 #include <avr/io.h>
@@ -20,8 +30,8 @@
 #define LEDS                12
 
 const uint16_t TWELVE_HOUR = 43200;    // 12 * 3600 seconds
-const uint16_t SHOWTIME_INTERVAL = 60;    // 60 seconds
-const uint32_t DISPLAY_TIME = 5000;  // 5000ms
+const uint16_t SHOWTIME_INTERVAL = 60; // 60 seconds
+const uint32_t DISPLAY_TIME = 5000;    // 5000ms
 
 // Charlieplexing configuration and state matrix
 typedef struct {
@@ -45,7 +55,8 @@ const Mux_t mux[LEDS] = {
 };
 
 // state machine for LED blinking states
-enum States {BEGIN, LED_ON, LED_OFF, END};
+typedef enum LED_STATES {BEGIN, LED_ON, LED_OFF, END} LED_State_t;
+typedef enum ADJUST_STATES {DONE, ADJUST_HOUR, ADJUST_MIN} AdjustMode_t;
 
 volatile uint16_t timeCount = 0;
 volatile uint32_t t_millis = 0;
@@ -56,15 +67,17 @@ volatile uint8_t showTime = 0;
 volatile uint8_t sw1Pressed = 0;
 volatile uint8_t sw2Pressed = 0;
 
+volatile AdjustMode_t adjustMode = DONE;
+
 uint32_t millis() {
     while (TCA0.SINGLE.INTFLAGS & TCA_SINGLE_OVF_bm);
     return t_millis;
 }
 
 ISR (RTC_PIT_vect) {
-  timeCount = (timeCount + 1) % TWELVE_HOUR;    // count up to 12-hour (12 * 3600) = 43200
+  timeCount = (timeCount + 1) % TWELVE_HOUR;                 // count up to 12-hour (12 * 3600) = 43200
 #ifdef AUTO_SHOWTIME
-  if ((timeCount % SHOWTIME_INTERVAL) == 0) {   // only show time once in every 60 seconds
+  if ((timeCount % SHOWTIME_INTERVAL) == 0) {                // only show time once in every 60 seconds
     showTime = 1;
     displayStart = millis();
   }
@@ -78,13 +91,19 @@ ISR(TCA0_OVF_vect) {
 }
 
 ISR(PORTC_PORT_vect) {
- if (PORTC.INTFLAGS & PORT_INT5_bm) {  // PC5 (SW1) for show time
-    PORTC.INTFLAGS = PORT_INT5_bm;     // Clear PC5 interrupt flag
+ if (PORTC.INTFLAGS & PORT_INT5_bm) {                        // PC5 (SW1) for show time
+    PORTC.INTFLAGS = PORT_INT5_bm;                           // Clear PC5 interrupt flag
     sw1Pressed = 1;
   }
-  if (PORTC.INTFLAGS & PORT_INT4_bm) { // PC4 (SW2) for show time
-    PORTC.INTFLAGS = PORT_INT4_bm;     // Clear PC4 interrupt flag
+  else if (PORTC.INTFLAGS & PORT_INT4_bm) {                  // PC4 (SW2) for show time
+    PORTC.INTFLAGS = PORT_INT4_bm;                           // Clear PC4 interrupt flag
     sw2Pressed = 1;
+    if (adjustMode == DONE)
+      adjustMode = ADJUST_HOUR;
+    else if (adjustMode == ADJUST_HOUR)
+      adjustMode = ADJUST_MIN;
+    else
+      adjustMode = DONE;
   }
   displayStart = millis();
 }
@@ -96,14 +115,15 @@ void disableAllPins() {
   PORTB.DIRCLR = PIN0_bm | PIN1_bm | PIN2_bm | PIN3_bm | PIN4_bm | PIN5_bm | PIN6_bm | PIN7_bm;
   PORTC.DIRCLR = PIN0_bm | PIN1_bm | PIN2_bm | PIN3_bm | PIN4_bm | PIN5_bm;
 
-  // disable input buffer to lower power consumption in sleep mode
+  // disable all pin input buffer on Port A and B to lower power consumption in sleep mode
   for (uint8_t i = 0; i < 8; i++) {
-    *((uint8_t *)&PORTA + 0x10 + i) = PORT_ISC_INPUT_DISABLE_gc;  // disable all pins on PORTA
-    *((uint8_t *)&PORTB + 0x10 + i) = PORT_ISC_INPUT_DISABLE_gc;  // disable all pins on PORTB
+    *((uint8_t *)&PORTA + 0x10 + i) = PORT_ISC_INPUT_DISABLE_gc;
+    *((uint8_t *)&PORTB + 0x10 + i) = PORT_ISC_INPUT_DISABLE_gc;
   }
 
+  // disable all except Pin4(SW2) and Pin5(SW1)
   for (uint8_t i = 0; i < 4; i++) {
-    *((uint8_t *)&PORTC + 0x10 + i) = PORT_ISC_INPUT_DISABLE_gc;  // disable all except Pin4(SW2) and Pin5(SW1)
+    *((uint8_t *)&PORTC + 0x10 + i) = PORT_ISC_INPUT_DISABLE_gc;
   }
 
 }
@@ -134,7 +154,7 @@ void turnOffLED() {
 
 void flashLED(uint8_t theLED, uint8_t flashes) {
 
-  static uint8_t flashState = BEGIN;
+  static LED_State_t flashState = BEGIN;
   static uint8_t cycle = 0;
   static uint32_t onTimer = 0;
   static uint32_t offTimer = 0;
@@ -148,13 +168,13 @@ void flashLED(uint8_t theLED, uint8_t flashes) {
     case LED_ON:
       {
         turnOnLED(theLED);
-        if (flashes == 0) {  // flash once for 450ms On/50ms Off
+        if (flashes == 0) {                                  // flash once for 450ms On/50ms Off
           if (millis() - onTimer > 450) {
             flashState = LED_OFF;
           }
         }
         else {
-          if (millis() - onTimer > 50) {  // flash once for 50ms On
+          if (millis() - onTimer > 50) {                     // flash once for 50ms On
             flashState = LED_OFF;
             offTimer = millis();
           }
@@ -198,7 +218,7 @@ void flashLED(uint8_t theLED, uint8_t flashes) {
 // Generate a 1ms output for millis()
 void configTCA() {
     TCA0.SINGLE.CTRLB = TCA_SINGLE_WGMODE_NORMAL_gc;
-    TCA0.SINGLE.PER = 625 - 1;                          // (1ms * F_CPU ) / 8 -1 (i.e. (0.001 * 5000000 / 8) - 1 )
+    TCA0.SINGLE.PER = 625 - 1;                               // (1ms * F_CPU ) / 8 -1 (i.e. (0.001 * 5000000 / 8) - 1 )
     TCA0.SINGLE.INTCTRL = TCA_SINGLE_OVF_bm;
     TCA0.SINGLE.CTRLA = TCA_SINGLE_CLKSEL_DIV8_gc;
     TCA0.SINGLE.CTRLA |= TCA_SINGLE_ENABLE_bm;
@@ -209,24 +229,24 @@ void configRTC() {
 #if defined(USE_INTERNAL_OSC)
   /* Using ULP internal 32.768kHz clcok */
   while (RTC.STATUS > 0);
-  RTC.CLKSEL = RTC_CLKSEL_INT32K_gc;                    // 32.768kHz Internal Oscillator
+  RTC.CLKSEL = RTC_CLKSEL_INT32K_gc;                         // 32.768kHz Internal Oscillator
 #else
   /* Using external 32.768kHz clock on PB2 and PB3 */
   _PROTECTED_WRITE(CLKCTRL.XOSC32KCTRLA, CLKCTRL_RUNSTDBY_bm | CLKCTRL_ENABLE_bm);
   while (RTC.STATUS > 0);
-  RTC.CLKSEL = RTC_CLKSEL_TOSC32K_gc;                   // clock from  XOSC32K (PB2 & PB3) or TSOC1 pin (PB3)
+  RTC.CLKSEL = RTC_CLKSEL_TOSC32K_gc;                        // clock from  XOSC32K (PB2 & PB3) or TSOC1 pin (PB3)
 #endif
 
   RTC.PITINTCTRL = RTC_PI_bm;
-  RTC.PITCTRLA = RTC_PERIOD_CYC32768_gc | RTC_PITEN_bm; // RTC clock cycles between each interrupt
+  RTC.PITCTRLA = RTC_PERIOD_CYC32768_gc | RTC_PITEN_bm;      // RTC clock cycles between each interrupt
 
 }
 
 void configButtons() {
     PORTC.DIRCLR = PIN4_bm;
-    PORTC.PIN4CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;  // Enable PC4(SW2) PULLUP and interrupt trigger
+    PORTC.PIN4CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc; // Enable PC4(SW2) PULLUP and interrupt trigger
     PORTC.DIRCLR = PIN5_bm;
-    PORTC.PIN5CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;  // Enable PC5(SW1) PULLUP and interrupt trigger
+    PORTC.PIN5CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc; // Enable PC5(SW1) PULLUP and interrupt trigger
 }
 
 
@@ -237,7 +257,7 @@ void configTime() {
     uint16_t h = atoi(strtok(timeStr, ":"));
     uint16_t m = atoi(strtok(NULL, ":"));
     uint16_t s = atoi(strtok(NULL, ":"));
-    timeCount = ( h * 3600 +  m * 60 + s ) % TWELVE_HOUR; //round it to 12-hour
+    timeCount = ( h * 3600 +  m * 60 + s ) % TWELVE_HOUR;    //round it to 12-hour
 }
 
 void testLED() {
@@ -249,62 +269,85 @@ void testLED() {
 
 int main() {
 
-    _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, (CLKCTRL_PEN_bm | CLKCTRL_PDIV_4X_gc)); // set prescaler to 4 for running at 5MHz
-    while (!(CLKCTRL.MCLKSTATUS & CLKCTRL_OSC20MS_bm)) {};
+  // set prescaler = 4, F_CPU = 5MHz
+  _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, (CLKCTRL_PEN_bm | CLKCTRL_PDIV_4X_gc));
+  while (!(CLKCTRL.MCLKSTATUS & CLKCTRL_OSC20MS_bm)) {};
 
-    configTime();
-    configRTC();
-    configTCA();
-    configButtons();
-    SLPCTRL.CTRLA |= SLPCTRL_SMODE_PDOWN_gc;    // config sleep controller to PowerDown mode 
-    sei();
+  configTime();
+  configRTC();
+  configTCA();
+  configButtons();
+  SLPCTRL.CTRLA |= SLPCTRL_SMODE_PDOWN_gc;                   // config sleep controller to PowerDown mode 
+  sei();
 
-    while(1) {
+  while(1) {
 
-      // testLED();
+    // testLED();
 
-      if (showTime || sw1Pressed || sw2Pressed) {
+    if (showTime || sw1Pressed && !adjustMode) {             // if showTIme is set (AUTO_SHOWTIME enabled) or sw1 is pressed, display time
+        cli();
+        uint16_t seconds = timeCount;
+        sei();
+
+        uint8_t hours = (uint8_t) ((seconds / 3600) % 12);
+        uint8_t minutes = (uint8_t) ((seconds / 60) % 60);
+        uint8_t fiveMinuteInterval = (minutes / 5) % 12;
+        uint8_t flashes = minutes % 5;
+
+        turnOnLED(hours);
+        flashLED(fiveMinuteInterval, flashes);
+
+        if (millis() - displayStart >= DISPLAY_TIME) {
+            turnOffLED();
+            // if (sw1Pressed)
+              sw1Pressed = 0;
+            showTime = 0;
+            displayStart = millis();
+        }
+    }
+    else if (adjustMode || sw2Pressed) {                     // if in the adjustMode or sw2 is pressed, enter adjust time mode
+      cli();
+      uint16_t seconds = timeCount;
+      sei();
+
+      uint8_t hours = (uint8_t) ((seconds / 3600) % 12);
+      uint8_t minutes = (uint8_t) ((seconds / 60) % 60);
+      uint8_t fiveMinuteInterval = (minutes / 5) % 12;
+      uint8_t flashes = minutes % 5;
+
+      if (adjustMode == ADJUST_HOUR) {                       // if in the adjust hour state
+        turnOnLED(hours);
+        if (sw1Pressed) {
           cli();
-          uint16_t seconds = timeCount;
+          timeCount = (timeCount + 3600) % TWELVE_HOUR;      // advance time by one hour
           sei();
-
-          uint8_t hours = (uint8_t) ((seconds / 3600) % 12);
-          uint8_t minutes = (uint8_t) ((seconds / 60) % 60);
-          uint8_t fiveMinuteInterval = (minutes / 5) % 12;
-          uint8_t flashes = minutes % 5;
-
-          turnOnLED(hours);
-          flashLED(fiveMinuteInterval, flashes);
-
-          if (millis() - displayStart >= DISPLAY_TIME) {
-              turnOffLED();
-              if (sw1Pressed) {
-                _delay_ms(50);   // for debouncing
-                sw1Pressed = 0;
-                PORTC.PIN5CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
-              }
-              if (sw2Pressed) {
-                _delay_ms(50);   // for debouncing
-                sw2Pressed = 0;
-                PORTC.PIN4CTRL = PORT_PULLUPEN_bm | PORT_ISC_FALLING_gc;
-              }
-              showTime = 0;
-              displayStart = millis();
-          }
+          sw1Pressed = 0;
+        }
       }
-      else {
-          // this put MCU in PowerDown mode and consumed only 1uA
-          disableAllPins();
-          TCA0.SINGLE.CTRLA &= ~TCA_SINGLE_ENABLE_bm; // disable TCA
-          SLPCTRL.CTRLA |= SLPCTRL_SEN_bm;            // sleep enable
-          __asm("sleep");
-          SLPCTRL.CTRLA &= ~SLPCTRL_SEN_bm;           // sleep disable
-          __asm("nop");
-          TCA0.SINGLE.CTRLA |= TCA_SINGLE_ENABLE_bm;  // re-enable TCA
+      else if (adjustMode == ADJUST_MIN) {                   // if in the adjust minute state
+        flashLED(fiveMinuteInterval, flashes);
+        if (sw1Pressed) {
+          cli();
+          timeCount += 60;                                   // advance time by one minute
+          sei();
+          sw1Pressed = 0;
+        }
       }
-
+      sw2Pressed = 0;
+    }
+    else {
+        // this put MCU in PowerDown mode and consumed only 1uA
+        disableAllPins();
+        TCA0.SINGLE.CTRLA &= ~TCA_SINGLE_ENABLE_bm;          // disable TCA
+        SLPCTRL.CTRLA |= SLPCTRL_SEN_bm;                     // sleep enable
+        __asm("sleep");
+        SLPCTRL.CTRLA &= ~SLPCTRL_SEN_bm;                    // sleep disable
+        __asm("nop");
+        TCA0.SINGLE.CTRLA |= TCA_SINGLE_ENABLE_bm;           // re-enable TCA
     }
 
-    return 0;
+  }
+
+  return 0;
 
 }
