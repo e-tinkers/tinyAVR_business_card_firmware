@@ -56,7 +56,7 @@ const Mux_t mux[LEDS] = {
 
 // state machine for LED blinking states
 typedef enum LED_STATES {BEGIN, LED_ON, LED_OFF, END} LED_State_t;
-typedef enum ADJUST_STATES {DONE, ADJUST_HOUR, ADJUST_MIN} AdjustMode_t;
+typedef enum ADJUST_STATES {NOT_SET, ADJUST_HOUR, ADJUST_MIN} AdjustMode_t;
 
 volatile uint16_t timeCount = 0;
 volatile uint32_t t_millis = 0;
@@ -67,7 +67,7 @@ volatile uint8_t showTime = 0;
 volatile uint8_t sw1Pressed = 0;
 volatile uint8_t sw2Pressed = 0;
 
-volatile AdjustMode_t adjustMode = DONE;
+volatile AdjustMode_t adjustMode = NOT_SET;
 
 uint32_t millis() {
     while (TCA0.SINGLE.INTFLAGS & TCA_SINGLE_OVF_bm);
@@ -95,15 +95,15 @@ ISR(PORTC_PORT_vect) {
     PORTC.INTFLAGS = PORT_INT5_bm;                           // Clear PC5 interrupt flag
     sw1Pressed = 1;
   }
-  else if (PORTC.INTFLAGS & PORT_INT4_bm) {                  // PC4 (SW2) for show time
+  else if (PORTC.INTFLAGS & PORT_INT4_bm) {                  // PC4 (SW2) for adjust time
     PORTC.INTFLAGS = PORT_INT4_bm;                           // Clear PC4 interrupt flag
     sw2Pressed = 1;
-    if (adjustMode == DONE)
+    if (adjustMode == NOT_SET)
       adjustMode = ADJUST_HOUR;
     else if (adjustMode == ADJUST_HOUR)
       adjustMode = ADJUST_MIN;
     else
-      adjustMode = DONE;
+      adjustMode = NOT_SET;
   }
   displayStart = millis();
 }
